@@ -1,0 +1,9 @@
+install.packages("pheatmap")
+install.packages("ggplot2")
+install.packages("ggrepel")
+
+if (!requireNamespace("BiocManager"))
+    install.packages("BiocManager")
+
+BiocManager::install("DESeq2")
+BiocManager::install("apeglm")
