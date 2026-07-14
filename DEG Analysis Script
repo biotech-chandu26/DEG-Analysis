@@ -1,0 +1,341 @@
+############################################################
+# RNA-Seq Differential Expression Analysis
+#
+# Organism : Trichiurus japonicus
+# Tool     : DESeq2
+#
+# Author   : Chandrajeet
+############################################################
+
+
+library(DESeq2)
+library(pheatmap)
+library(ggplot2)
+library(ggrepel)
+
+
+############################################################
+# 1. Load featureCounts data
+############################################################
+
+
+counts <- read.delim(
+    "counts/gene_counts.txt",
+    comment.char="#",
+    row.names=1
+)
+
+
+# Remove featureCounts annotation columns
+
+counts <- counts[,6:ncol(counts)]
+
+
+# Rename samples
+
+colnames(counts) <- c(
+    "SRR33408710",
+    "SRR33408711",
+    "SRR33408712",
+    "SRR33408713",
+    "SRR33408714",
+    "SRR33408715"
+)
+
+
+
+############################################################
+# 2. Create sample information
+############################################################
+
+
+condition <- factor(
+c(
+"Control",
+"Control",
+"Control",
+"Treatment",
+"Treatment",
+"Treatment"
+)
+)
+
+
+sample_info <- data.frame(
+row.names = colnames(counts),
+condition
+)
+
+
+print(sample_info)
+
+
+
+############################################################
+# 3. Create DESeq2 object
+############################################################
+
+
+dds <- DESeqDataSetFromMatrix(
+    countData = counts,
+    colData = sample_info,
+    design = ~condition
+)
+
+
+
+############################################################
+# Remove low expression genes
+############################################################
+
+
+dds <- dds[rowSums(counts(dds)) > 10, ]
+
+
+
+############################################################
+# 4. Run DEG analysis
+############################################################
+
+
+dds <- DESeq(dds)
+
+
+
+############################################################
+# Treatment vs Control
+############################################################
+
+
+res <- results(
+dds,
+contrast=c(
+"condition",
+"Treatment",
+"Control"
+)
+)
+
+
+res <- lfcShrink(
+dds,
+coef=2,
+res=res,
+type="apeglm"
+)
+
+
+res <- as.data.frame(res)
+
+
+write.csv(
+res,
+"DEG_results_all.csv"
+)
+
+
+
+############################################################
+# 5. Significant DEGs
+############################################################
+
+
+deg <- subset(
+res,
+padj < 0.05 &
+abs(log2FoldChange) > 1
+)
+
+
+write.csv(
+deg,
+"Significant_DEGs.csv"
+)
+
+
+cat(
+"Number of DEGs:",
+nrow(deg)
+)
+
+
+
+############################################################
+# 6. PCA Plot
+############################################################
+
+
+vsd <- vst(
+dds,
+blind=FALSE
+)
+
+
+pca_data <- plotPCA(
+vsd,
+intgroup="condition",
+returnData=TRUE
+)
+
+
+percent <- round(
+100*attr(
+pca_data,
+"percentVar"
+)
+)
+
+
+pdf(
+"PCA_plot.pdf",
+width=7,
+height=5
+)
+
+
+ggplot(
+pca_data,
+aes(
+PC1,
+PC2,
+color=condition,
+label=name
+)
+)+
+
+geom_point(size=4)+
+
+geom_text_repel()+
+
+xlab(
+paste0(
+"PC1: ",
+percent[1],
+"%"
+)
+)+
+
+ylab(
+paste0(
+"PC2: ",
+percent[2],
+"%"
+)
+)+
+
+theme_bw()
+
+
+dev.off()
+
+
+
+############################################################
+# 7. Heatmap of top 50 DEGs
+############################################################
+
+
+top_genes <- rownames(
+head(
+deg[order(deg$padj),],
+50
+)
+)
+
+
+heat_matrix <- assay(vsd)[top_genes,]
+
+
+pdf(
+"DEG_heatmap.pdf",
+width=8,
+height=10
+)
+
+
+pheatmap(
+heat_matrix,
+annotation_col=sample_info,
+scale="row",
+show_rownames=FALSE
+)
+
+
+dev.off()
+
+
+
+############################################################
+# 8. Volcano Plot
+############################################################
+
+
+res$Significance <- "NS"
+
+
+res$Significance[
+res$padj < 0.05 &
+res$log2FoldChange > 1
+] <- "Up"
+
+
+res$Significance[
+res$padj < 0.05 &
+res$log2FoldChange < -1
+] <- "Down"
+
+
+
+pdf(
+"Volcano_plot.pdf",
+width=7,
+height=6
+)
+
+
+ggplot(
+res,
+aes(
+x=log2FoldChange,
+y=-log10(padj),
+color=Significance
+)
+)+
+
+geom_point(alpha=0.5)+
+
+theme_bw()+
+
+xlab(
+"log2 Fold Change"
+)+
+
+ylab(
+"-log10 Adjusted P-value"
+)+
+
+geom_vline(
+xintercept=c(-1,1),
+linetype="dashed"
+)+
+
+geom_hline(
+yintercept=-log10(0.05),
+linetype="dashed"
+)
+
+
+dev.off()
+
+
+
+############################################################
+# Finished
+############################################################
+
+
+cat(
+"\nDEG analysis completed successfully\n"
+)
+
+DEG_analysis.R
